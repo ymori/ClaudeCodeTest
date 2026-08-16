@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>簡単クイズ</title>
+<style>
+  :root {
+    --bg: #f4f6fb;
+    --card: #ffffff;
+    --text: #1d2333;
+    --muted: #6b7280;
+    --accent: #4f6df5;
+    --ok: #12a06a;
+    --ng: #e04a4a;
+    --line: #e3e7f0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #171a23;
+      --card: #212633;
+      --text: #eef1f8;
+      --muted: #9aa3b5;
+      --accent: #7d95ff;
+      --line: #333a4b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 24px 16px 48px;
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
+    line-height: 1.7;
+  }
+  .wrap { max-width: 640px; margin: 0 auto; }
+  h1 { font-size: 1.6rem; text-align: center; margin: 8px 0 4px; }
+  .sub { text-align: center; color: var(--muted); font-size: .9rem; margin-bottom: 20px; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 20px;
+    box-shadow: 0 2px 12px rgba(0,0,0,.05);
+  }
+  .bar { height: 6px; background: var(--line); border-radius: 99px; overflow: hidden; margin-bottom: 16px; }
+  .bar > div { height: 100%; width: 0; background: var(--accent); transition: width .3s; }
+  .count { color: var(--muted); font-size: .85rem; }
+  .q { font-size: 1.15rem; font-weight: 600; margin: 8px 0 18px; }
+  .choices { display: grid; gap: 10px; }
+  button.choice {
+    width: 100%;
+    text-align: left;
+    padding: 13px 16px;
+    font: inherit;
+    color: inherit;
+    background: transparent;
+    border: 2px solid var(--line);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+  }
+  button.choice:hover:not(:disabled) { border-color: var(--accent); }
+  button.choice:disabled { cursor: default; opacity: .75; }
+  button.choice.ok { border-color: var(--ok); background: rgba(18,160,106,.12); opacity: 1; }
+  button.choice.ng { border-color: var(--ng); background: rgba(224,74,74,.12); opacity: 1; }
+  .feedback { margin-top: 16px; font-weight: 600; min-height: 1.7em; }
+  .feedback small { display: block; font-weight: 400; color: var(--muted); }
+  .next {
+    margin-top: 16px; padding: 11px 22px; font: inherit; font-weight: 600;
+    color: #fff; background: var(--accent); border: none; border-radius: 10px; cursor: pointer;
+  }
+  .next[hidden] { display: none; }
+  .score { font-size: 2.4rem; font-weight: 700; text-align: center; margin: 8px 0; }
+  .result-msg { text-align: center; color: var(--muted); margin-bottom: 20px; }
+  .center { text-align: center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>簡単クイズ</h1>
+  <p class="sub">全5問・4択。気軽にどうぞ。</p>
+
+  <div class="card" id="quiz">
+    <div class="bar"><div id="progress"></div></div>
+    <div class="count" id="count"></div>
+    <div class="q" id="question"></div>
+    <div class="choices" id="choices"></div>
+    <div class="feedback" id="feedback"></div>
+    <button class="next" id="next" hidden>次の問題へ</button>
+  </div>
+
+  <div class="card" id="result" hidden>
+    <div class="score" id="scoreText"></div>
+    <p class="result-msg" id="resultMsg"></p>
+    <div class="center"><button class="next" id="retry">もう一度挑戦</button></div>
+  </div>
+</div>
+
+<script>
+const QUIZ = [
+  {
+    q: "日本で一番高い山は？",
+    choices: ["北岳", "富士山", "槍ヶ岳", "御嶽山"],
+    answer: 1,
+    note: "富士山の標高は3776m。2位は南アルプスの北岳（3193m）です。"
+  },
+  {
+    q: "1年のうち、日数が28日または29日の月は？",
+    choices: ["1月", "2月", "4月", "11月"],
+    answer: 1,
+    note: "うるう年の2月は29日になります。"
+  },
+  {
+    q: "光の三原色の組み合わせは？",
+    choices: ["赤・青・黄", "赤・緑・青", "黄・水色・紫", "白・黒・灰"],
+    answer: 1,
+    note: "光はRGB（赤・緑・青）。絵の具などの色料はシアン・マゼンタ・イエローです。"
+  },
+  {
+    q: "水が氷になるのは、およそ何℃から？",
+    choices: ["100℃", "50℃", "0℃", "-100℃"],
+    answer: 2,
+    note: "1気圧のもとで、水の凝固点は0℃、沸点は100℃です。"
+  },
+  {
+    q: "HTMLの「H」は何の略？",
+    choices: ["High", "Hyper", "Host", "Human"],
+    answer: 1,
+    note: "HyperText Markup Language の略です。"
+  }
+];
+
+let index = 0;
+let score = 0;
+
+const $ = id => document.getElementById(id);
+
+function render() {
+  const item = QUIZ[index];
+  $("count").textContent = `第${index + 1}問 / 全${QUIZ.length}問`;
+  $("question").textContent = item.q;
+  $("progress").style.width = (index / QUIZ.length * 100) + "%";
+  $("feedback").textContent = "";
+  $("next").hidden = true;
+
+  const box = $("choices");
+  box.innerHTML = "";
+  item.choices.forEach((text, i) => {
+    const btn = document.createElement("button");
+    btn.className = "choice";
+    btn.textContent = text;
+    btn.addEventListener("click", () => select(i));
+    box.appendChild(btn);
+  });
+}
+
+function select(picked) {
+  const item = QUIZ[index];
+  const buttons = [...document.querySelectorAll(".choice")];
+  buttons.forEach((b, i) => {
+    b.disabled = true;
+    if (i === item.answer) b.classList.add("ok");
+    else if (i === picked) b.classList.add("ng");
+  });
+
+  const correct = picked === item.answer;
+  if (correct) score++;
+  $("feedback").innerHTML =
+    (correct ? "⭕ 正解！" : "❌ 残念…正解は「" + item.choices[item.answer] + "」") +
+    "<small>" + item.note + "</small>";
+
+  $("next").hidden = false;
+  $("next").textContent = index === QUIZ.length - 1 ? "結果を見る" : "次の問題へ";
+}
+
+$("next").addEventListener("click", () => {
+  index++;
+  if (index < QUIZ.length) render();
+  else showResult();
+});
+
+function showResult() {
+  $("quiz").hidden = true;
+  $("result").hidden = false;
+  $("scoreText").textContent = `${score} / ${QUIZ.length} 問正解`;
+  const msgs = ["また挑戦してみよう！", "あと少し！", "いい調子！", "なかなかの正解率！", "おしい、あと1問！", "全問正解、お見事！"];
+  $("resultMsg").textContent = msgs[score];
+}
+
+$("retry").addEventListener("click", () => {
+  index = 0;
+  score = 0;
+  $("result").hidden = true;
+  $("quiz").hidden = false;
+  render();
+});
+
+render();
+</script>
+</body>
+</html>
